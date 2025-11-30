@@ -179,7 +179,7 @@
     </div>
 
     <!-- Column 3: HISTORY -->
-    <div class="flex-1 overflow-y-auto bg-gray-50">
+    <div class="w-96 overflow-y-auto bg-gray-50">
       <div class="sticky top-0 bg-gradient-to-r from-gray-600 to-gray-700 text-white p-4 shadow-lg z-10">
         <h2 class="text-2xl font-bold">📋 TARIX</h2>
         <p class="text-sm opacity-90">Tugallangan buyurtmalar</p>
@@ -301,9 +301,7 @@ export default {
       return this.kot.filter(k => 
         !k.showDiv && 
         k.production === this.production &&
-        this.getKotStatus(k.name) === 'preparing' &&
-        k.type !== 'Cancelled' &&
-        k.type !== 'Partially cancelled'
+        this.getKotStatus(k.name) === 'preparing'
       );
     },
   },
@@ -351,39 +349,21 @@ export default {
     },
     
     rejectOrder(kot) {
-      // Confirm before rejecting
-      if (!confirm(`Buyurtmani rad etishni tasdiqlaysizmi?\nStol: ${kot.tableortakeaway}\nOrder: ${kot.invoice ? kot.invoice.slice(-4) : 'N/A'}`)) {
-        return;
-      }
-
       this.call
         .post("ury_mosaic.ury_mosaic.api.ury_kot_display.reject_kot", {
           name: kot.name,
           user: this.loggeduser,
         })
         .then((result) => {
-          console.log('Reject result:', result);
-          
           kot.showDiv = true;
           this.setKotStatus(kot.name, 'completed');
           this.addActivity('rejected', 'RAD ETILDI', kot);
-          
-          // Show detailed message
-          if (result && result.message) {
-            if (result.message.invoice_cancelled) {
-              this.showNotification('success', `✓ Buyurtma va invoice bekor qilindi - ${kot.tableortakeaway}`);
-            } else {
-              this.showNotification('success', `✓ Buyurtma rad etildi - ${kot.tableortakeaway}`);
-            }
-          } else {
-            this.showNotification('success', `❌ Rad etildi - ${kot.tableortakeaway}`);
-          }
-          
+          this.showNotification('error', `❌ Rad etildi - ${kot.tableortakeaway}`);
           this.removeAllItemsFromLocalStorage(kot);
         })
         .catch((error) => {
-          console.error('Reject error:', error);
-          this.showNotification('error', `✕ Xatolik: ${error.message || 'Rad etishda xatolik'}`);
+          console.error(error);
+          this.showNotification('error', "✕ Xatolik yuz berdi!");
         });
     },
     
@@ -695,13 +675,9 @@ export default {
             this.updateTimeRemaining();
             localStorage.setItem("kot_time", doc.kot.time);
             
-            // Handle cancelled orders from URY Order panel
+            // Handle cancelled orders
             if (doc.kot.type === "Cancelled" || doc.kot.type === "Partially cancelled") {
-              // Mark as completed and move to history
-              this.setKotStatus(doc.kot.name, 'completed');
-              doc.kot.showDiv = true;
-              this.addActivity('cancelled', 'BEKOR QILINDI (ORDER PANELDAN)', doc.kot);
-              this.showNotification('warning', `⚠ Buyurtma bekor qilindi - ${doc.kot.tableortakeaway}`);
+              this.addActivity('cancelled', 'BEKOR QILINDI', doc.kot);
             }
           });
         });
