@@ -18,7 +18,7 @@
           </p>
           <div class="flex justify-start">
             <button
-              @click="showModal = false; redirectToLogin();"
+              @click="redirectToLogin();"
               class="mt-8 rounded bg-blue-500 px-3 py-2 text-white hover:bg-blue-600"
             >
               Login
@@ -260,8 +260,9 @@ import io from "socket.io-client";
 
 let host = window.location.hostname;
 let port = window.location.port;
-let protocol = port ? "http" : "https";
-let url = `${protocol}://${host}:${port}`;
+let protocol = window.location.protocol.replace(':', ''); // Use actual protocol from window
+let portPart = port ? `:${port}` : '';
+let url = `${protocol}://${host}${portPart}`;
 let socketUrl = `${protocol}://${host}:9000`;
 let socket = io(socketUrl);
 
@@ -497,11 +498,20 @@ export default {
         auth
           .getLoggedInUser()
           .then((user) => {
+            console.log("Logged in user:", user);
+            if (!user) {
+              console.error("No user found");
+              this.showModal = true;
+              reject(new Error("No user"));
+              return;
+            }
             this.loggeduser = user;
+            this.showModal = false;
             resolve();
           })
           .catch((error) => {
-            console.error(error);
+            console.error("Auth error:", error);
+            this.showModal = true;
             reject(error);
           });
       });
@@ -629,8 +639,8 @@ export default {
     
     redirectToLogin() {
       const currentDomain = window.location.origin;
-      window.location.href =
-        currentDomain + "/login?redirect-to=URYMosaic/" + this.production;
+      const currentPath = window.location.pathname;
+      window.location.href = currentDomain + "/login?redirect-to=" + currentPath.substring(1);
     },
     
     hideAudioAlertMessage() {
@@ -690,19 +700,42 @@ export default {
               }
             }
             
-            this.kot.unshift(doc.kot);
+            // Check if this order already exists (update scenario)
+            const existingKotIndex = this.kot.findIndex(k => k.name === doc.kot.name);
+            
+            if (existingKotIndex !== -1) {
+              // Update existing order
+              const existingKot = this.kot[existingKotIndex];
+              
+              // Check if order was cancelled
+              if ((doc.kot.type === "Cancelled" || doc.kot.type === "Partially cancelled") &&
+                  (existingKot.type !== "Cancelled" && existingKot.type !== "Partially cancelled")) {
+                // Order just got cancelled - move to history
+                this.setKotStatus(doc.kot.name, 'completed');
+                this.kot[existingKotIndex] = doc.kot;
+                this.kot[existingKotIndex].showDiv = true;
+                this.addActivity('cancelled', 'BEKOR QILINDI (ORDER PANELDAN)', doc.kot);
+                this.showNotification('warning', `⚠ Buyurtma bekor qilindi - ${doc.kot.tableortakeaway}`);
+              } else {
+                // Regular update
+                this.kot[existingKotIndex] = doc.kot;
+              }
+            } else {
+              // New order - add to beginning
+              this.kot.unshift(doc.kot);
+              
+              // If new order comes already cancelled
+              if (doc.kot.type === "Cancelled" || doc.kot.type === "Partially cancelled") {
+                this.setKotStatus(doc.kot.name, 'completed');
+                doc.kot.showDiv = true;
+                this.addActivity('cancelled', 'BEKOR QILINDI (ORDER PANELDAN)', doc.kot);
+                this.showNotification('warning', `⚠ Buyurtma bekor qilindi - ${doc.kot.tableortakeaway}`);
+              }
+            }
+            
             this.updateQtyColorTable();
             this.updateTimeRemaining();
             localStorage.setItem("kot_time", doc.kot.time);
-            
-            // Handle cancelled orders from URY Order panel
-            if (doc.kot.type === "Cancelled" || doc.kot.type === "Partially cancelled") {
-              // Mark as completed and move to history
-              this.setKotStatus(doc.kot.name, 'completed');
-              doc.kot.showDiv = true;
-              this.addActivity('cancelled', 'BEKOR QILINDI (ORDER PANELDAN)', doc.kot);
-              this.showNotification('warning', `⚠ Buyurtma bekor qilindi - ${doc.kot.tableortakeaway}`);
-            }
           });
         });
       })
